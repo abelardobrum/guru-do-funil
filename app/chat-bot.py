@@ -13,7 +13,7 @@ from langchain.prompts import PromptTemplate
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.memory import ConversationSummaryBufferMemory
 
-# Carregar variaveis de ambiente
+# Variaveis de ambiente
 load_dotenv()
 API_KEY = os.getenv('OPENAI_API_KEY')
 BASE_DE_DADOS = os.getenv('BASE_DE_DADOS')
@@ -24,7 +24,6 @@ def read_markdown(md_path):
     return content
 text = read_markdown(BASE_DE_DADOS)
 
-# Dividir em DOCUMENTS
 tokenizer = GPT2TokenizerFast.from_pretrained("gpt2", clean_up_tokenization_spaces=True)
 
 def tokens(text: str) -> int:
@@ -38,19 +37,12 @@ splitter = RecursiveCharacterTextSplitter(
 
 chunks = splitter.create_documents([text])
 
-
 # Criar vetores
 embeddings = OpenAIEmbeddings()
 db = FAISS.from_documents(chunks, embeddings)
 
-# Definir a similaridade da resposta
-def similar_question(query):
-    similar_response = db.similarity_search(query, k=3)
-    return [doc.page_content for doc in similar_response]
-
 client = OpenAI(api_key=API_KEY)
-llm = ChatOpenAI(temperature=0.5, model="gpt-3.5-turbo", max_tokens=500)
-
+llm = ChatOpenAI(temperature=0.1, model="gpt-3.5-turbo", max_tokens=500)
 
 # Prompt
 template = """
@@ -58,7 +50,7 @@ template = """
 Ensinar usuários leigos sobre Marketing Digital de maneira clara e acessível.  
 
 # Função 
-Você é um professor especializado em Marketing Digital. Seu objetivo é usar a base de dados fornecida como sua "apostila" para ensinar conceitos, estratégias e boas práticas de marketing digital de forma didática e envolvente.  
+Você é o Guru do funil, um professor especializado em Marketing Digital. Seu objetivo é usar a base de dados fornecida como sua "apostila" para ensinar conceitos, estratégias e boas práticas de marketing digital de forma didática e envolvente.  
 
 # Interação com Usuários  
 - Use uma linguagem simples, clara e acessível, adaptada para quem não tem conhecimento prévio no assunto.  
@@ -69,9 +61,11 @@ Você é um professor especializado em Marketing Digital. Seu objetivo é usar a
 - Ofereça dicas práticas sempre que for relevante.  
 
 # Base de Dados  
-Você buscará todas as informações no **Material de Marketing Digital** fornecido e responderá exclusivamente com base nesse conteúdo.  
+Você buscará informações na **Base de dados** fornecido e responderá com base nesse conteúdo.  
 - Considere a base de dados como sua "apostila", garantindo que suas explicações sejam 100% alinhadas com ela.  
 - Todas as respostas devem ser coerentes e consistentes com o que está na apostila.  
+
+Base de dados: {BASE_DE_DADOS}
 
 # Resumo das Interações  
 Esse é o resumo das últimas perguntas que o usuário fez nesta sessão:  
@@ -110,25 +104,30 @@ Esse é o resumo das últimas perguntas que o usuário fez nesta sessão:
 **IMPORTANTE**: Caso não encontre informações sobre o tema, informe o usuário de forma clara e pergunte se ele deseja explorar outro tópico de Marketing Digital.  
 """
 
-
-
 prompt = PromptTemplate(
-    input_variables=["message","historico"],
+    input_variables=["message","historico", "BASE_DE_DADOS"],
     template=template
 )
 
 chain = RunnableSequence(prompt | llm)
 
+
+# Definir a similaridade da resposta
+def similar_question(query):
+    similar_response = db.similarity_search(query, k=3)
+    return [doc.page_content for doc in similar_response]
+
 # Histórico da conversa
 history = ConversationSummaryBufferMemory(llm=llm, max_token_limit=300)
-
 def similar_history(message, response):
     history.save_context({"message": message}, {"response": response})
     return history.load_memory_variables({})
 
 # Gerar respostas
 def generate_response(message, memory_variables):
-    response = chain.invoke({"message": message, "codigo_de_etica": similar_question(message), "historico": memory_variables.get("history", "")})
+    response = chain.invoke({"message": message, 
+                             "BASE_DE_DADOS": similar_question(message), 
+                             "historico": memory_variables.get("history", "")})
     similar_history(message, response.content)
     return response.content
 
