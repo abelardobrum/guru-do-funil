@@ -111,7 +111,6 @@ prompt = PromptTemplate(
 
 chain = RunnableSequence(prompt | llm)
 
-
 # Definir a similaridade da resposta
 def similar_question(query):
     similar_response = db.similarity_search(query, k=3)
